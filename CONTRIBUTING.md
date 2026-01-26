@@ -45,12 +45,12 @@ npm run dev
 
 ### Local vs Production Binding
 
-The gateway needs different `--bind` settings:
+The gateway needs different `--bind` settings controlled by `CLAWDBOT_BIND_MODE`:
 
-- **Local dev**: Use `--bind lan` - binds to 0.0.0.0 which works with Docker networking
-- **Production**: Use `--bind auto` - lets clawdbot detect the right interface in Cloudflare's container environment
+- **Local dev**: `CLAWDBOT_BIND_MODE=lan` - binds to 0.0.0.0 which works with Docker networking
+- **Production**: `CLAWDBOT_BIND_MODE=auto` (default) - lets clawdbot detect the right interface
 
-Currently `start-clawdbot.sh` uses `--bind auto` for production. For local testing, you may need to temporarily change this to `--bind lan`.
+This is already configured in `.dev.vars.example`. Just copy it to `.dev.vars` for local dev.
 
 ### WebSocket Limitations
 
@@ -78,6 +78,7 @@ Clawdbot configuration is built at container startup:
 |----------|-------------|-------|
 | `ANTHROPIC_API_KEY` | (env var) | Clawdbot reads directly from env |
 | `CLAWDBOT_GATEWAY_TOKEN` | `--token` flag | If not set, random token is generated |
+| `CLAWDBOT_BIND_MODE` | `--bind` flag | `lan` for local dev, `auto` for production (default) |
 | `TELEGRAM_BOT_TOKEN` | `channels.telegram.botToken` | |
 | `DISCORD_BOT_TOKEN` | `channels.discord.token` | |
 | `SLACK_BOT_TOKEN` | `channels.slack.botToken` | |

@@ -2,6 +2,11 @@
 # .dev.vars is gitignored and used by wrangler dev
 
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Required for local dev - binds to 0.0.0.0 for Docker networking
+CLAWDBOT_BIND_MODE=lan
+
+# Optional
 # CLAWDBOT_GATEWAY_TOKEN=optional-token
 # TELEGRAM_BOT_TOKEN=optional
 # DISCORD_BOT_TOKEN=optional

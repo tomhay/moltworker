@@ -32,6 +32,7 @@ interface ClawdbotEnv {
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   CLAWDBOT_GATEWAY_TOKEN?: string;
+  CLAWDBOT_BIND_MODE?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_DM_POLICY?: string;
   DISCORD_BOT_TOKEN?: string;
@@ -54,6 +55,9 @@ function buildEnvVars(env: ClawdbotEnv): Record<string, string> {
   }
   if (env.CLAWDBOT_GATEWAY_TOKEN) {
     envVars.CLAWDBOT_GATEWAY_TOKEN = env.CLAWDBOT_GATEWAY_TOKEN;
+  }
+  if (env.CLAWDBOT_BIND_MODE) {
+    envVars.CLAWDBOT_BIND_MODE = env.CLAWDBOT_BIND_MODE;
   }
   if (env.TELEGRAM_BOT_TOKEN) {
     envVars.TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN;

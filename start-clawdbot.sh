@@ -112,4 +112,7 @@ else
     GATEWAY_TOKEN=$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
     echo "Gateway token (generated): $GATEWAY_TOKEN"
 fi
-exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind auto --token "$GATEWAY_TOKEN"
+# Bind mode: 'lan' for local dev, 'auto' for production
+BIND_MODE="${CLAWDBOT_BIND_MODE:-auto}"
+echo "Bind mode: $BIND_MODE"
+exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$GATEWAY_TOKEN"
