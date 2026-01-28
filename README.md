@@ -288,6 +288,22 @@ npx wrangler secret put SLACK_APP_TOKEN
 npm run deploy
 ```
 
+## Optional: Browser Automation (CDP)
+
+This worker includes a Chrome DevTools Protocol (CDP) shim that enables browser automation capabilities. This allows Moltbot to control a headless browser for tasks like web scraping, screenshots, and automated testing.
+
+### Setup
+
+The CDP shim is enabled by default. You'll need to set up a bypass for the `/cdp/*` routes in Cloudflare Access to allow Moltbot to access the CDP endpoints.
+As part of setup, we generate a secondary secret for CDP authentication to protect these routes independent of the main Cloudflare Access JWT. 
+
+If you followed the Cloudflare Access setup instructions in the previous section, you can do this by:
+
+1. Navigate to the Settings page of your worker on the Cloudflare dashboard
+2. Select the "Manage Cloudflare Access" option in the menu next to the "workers.dev" domain
+3. Find your Access applicaiton in the list and select "Edit"
+4. Change the "Path" field in the Public Hostname section to `^(?!cdp).*` to allow the cdp paths to bypass Cloudflare Access.
+
 ## Built-in Skills
 
 The container includes pre-installed skills in `/root/clawd/skills/`:
