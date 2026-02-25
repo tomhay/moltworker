@@ -14,7 +14,7 @@ export interface MoltbotEnv {
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_BASE_URL?: string;
   OPENAI_API_KEY?: string;
-  MOLTBOT_GATEWAY_TOKEN?: string; // Gateway token (mapped to CLAWDBOT_GATEWAY_TOKEN for container)
+  MOLTBOT_GATEWAY_TOKEN?: string; // Gateway token (passed to container as CLAWDBOT_GATEWAY_TOKEN)
 
   CLAWDBOT_BIND_MODE?: string;
   DEV_MODE?: string; // Set to 'true' for local dev (skips CF Access auth + moltbot device pairing)
@@ -37,6 +37,7 @@ export interface MoltbotEnv {
   BROWSER?: Fetcher;
   CDP_SECRET?: string; // Shared secret for CDP endpoint authentication
   WORKER_URL?: string; // Public URL of the worker (for CDP endpoint)
+  TOMBRAIN_API_URL?: string; // TomBrain API URL (e.g., https://tombrain.vercel.app)
 }
 
 /**

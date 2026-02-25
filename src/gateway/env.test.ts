@@ -3,10 +3,10 @@ import { buildEnvVars } from './env';
 import { createMockEnv } from '../test-utils';
 
 describe('buildEnvVars', () => {
-  it('returns empty object when no env vars set', () => {
+  it('returns only bind mode default when no env vars set', () => {
     const env = createMockEnv();
     const result = buildEnvVars(env);
-    expect(result).toEqual({});
+    expect(result).toEqual({ CLAWDBOT_BIND_MODE: 'lan' });
   });
 
   it('includes ANTHROPIC_API_KEY when set directly', () => {
@@ -131,6 +131,7 @@ describe('buildEnvVars', () => {
     
     expect(result).toEqual({
       ANTHROPIC_API_KEY: 'sk-key',
+      CLAWDBOT_BIND_MODE: 'lan',
       CLAWDBOT_GATEWAY_TOKEN: 'token',
       TELEGRAM_BOT_TOKEN: 'tg',
     });

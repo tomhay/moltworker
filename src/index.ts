@@ -262,111 +262,113 @@ app.all('*', async (c) => {
     }, 503);
   }
 
-  // Proxy to Moltbot with WebSocket message interception
+  // Gateway token for authenticating proxied requests to the container.
+  // CF Access handles browser→Worker auth; the Worker injects the internal token.
+  const gatewayToken = c.env.MOLTBOT_GATEWAY_TOKEN;
+
+  // Proxy WebSocket with token authentication
   if (isWebSocketRequest) {
     console.log('[WS] Proxying WebSocket connection to Moltbot');
-    console.log('[WS] URL:', request.url);
-    console.log('[WS] Search params:', url.search);
-    
+
+    // Inject token into the WebSocket URL so the gateway authenticates the connection
+    const wsUrl = new URL(request.url);
+    if (gatewayToken) wsUrl.searchParams.set('token', gatewayToken);
+    const wsRequest = new Request(wsUrl.toString(), request);
+
     // Get WebSocket connection to the container
-    const containerResponse = await sandbox.wsConnect(request, MOLTBOT_PORT);
-    console.log('[WS] wsConnect response status:', containerResponse.status);
-    
-    // Get the container-side WebSocket
-    const containerWs = containerResponse.webSocket;
-    if (!containerWs) {
-      console.error('[WS] No WebSocket in container response - falling back to direct proxy');
+    const containerResponse = await sandbox.wsConnect(wsRequest, MOLTBOT_PORT);
+    if (!containerResponse.webSocket) {
+      console.error('[WS] No WebSocket in container response');
       return containerResponse;
     }
-    
-    console.log('[WS] Got container WebSocket, setting up interception');
-    
-    // Create a WebSocket pair for the client
+
+    const containerWs = containerResponse.webSocket;
     const [clientWs, serverWs] = Object.values(new WebSocketPair());
-    
-    // Accept both WebSockets
     serverWs.accept();
     containerWs.accept();
-    
-    console.log('[WS] Both WebSockets accepted');
-    console.log('[WS] containerWs.readyState:', containerWs.readyState);
-    console.log('[WS] serverWs.readyState:', serverWs.readyState);
-    
-    // Relay messages from client to container
+
+    // Relay client → container, injecting token auth when browser has no device identity
     serverWs.addEventListener('message', (event) => {
-      console.log('[WS] Client -> Container:', typeof event.data, typeof event.data === 'string' ? event.data.slice(0, 200) : '(binary)');
-      if (containerWs.readyState === WebSocket.OPEN) {
-        containerWs.send(event.data);
-      } else {
-        console.log('[WS] Container not open, readyState:', containerWs.readyState);
+      if (typeof event.data === 'string' && gatewayToken) {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'req' && msg.method === 'connect') {
+            // Log full connect params to understand device auth requirements
+            console.log('[WS] Connect request, full params:', JSON.stringify(msg.params).slice(0, 1000));
+
+            // Strip any device identity from the connect message.
+            // The gateway's allowInsecureAuth only works when device identity is OMITTED.
+            // In secure contexts (HTTPS), the browser auto-generates device identity,
+            // which the gateway tries to validate and fails for unpaired devices.
+            msg.params = msg.params || {};
+            // Remove device identity fields that trigger signature validation
+            delete msg.params.deviceId;
+            delete msg.params.devicePublicKey;
+            delete msg.params.signature;
+            delete msg.params.device;
+            // Replace auth with token-only (no device signature)
+            msg.params.auth = { token: gatewayToken };
+            console.log('[WS] Stripped device identity, injected token. Final params:', JSON.stringify(msg.params).slice(0, 500));
+
+            if (containerWs.readyState === WebSocket.OPEN) {
+              containerWs.send(JSON.stringify(msg));
+            }
+            return;
+          }
+        } catch { /* not JSON */ }
       }
+      if (containerWs.readyState === WebSocket.OPEN) containerWs.send(event.data);
     });
-    
-    // Relay messages from container to client, with error transformation
+
+    // Relay container → client
     containerWs.addEventListener('message', (event) => {
-      console.log('[WS] Container -> Client (raw):', typeof event.data, typeof event.data === 'string' ? event.data.slice(0, 500) : '(binary)');
       let data = event.data;
-      
-      // Try to intercept and transform error messages
+
       if (typeof data === 'string') {
         try {
           const parsed = JSON.parse(data);
-          console.log('[WS] Parsed JSON, has error.message:', !!parsed.error?.message);
+
+          // Log gateway responses for debugging
+          if (parsed.type === 'res' || parsed.error) {
+            console.log('[WS] Gateway response:', JSON.stringify(parsed).slice(0, 500));
+          }
+
+          // Transform error messages for user-friendly display
           if (parsed.error?.message) {
-            console.log('[WS] Original error.message:', parsed.error.message);
             parsed.error.message = transformErrorMessage(parsed.error.message, url.host);
-            console.log('[WS] Transformed error.message:', parsed.error.message);
             data = JSON.stringify(parsed);
           }
-        } catch (e) {
-          console.log('[WS] Not JSON or parse error:', e);
+        } catch {
+          // Not JSON — pass through
         }
       }
-      
-      if (serverWs.readyState === WebSocket.OPEN) {
-        serverWs.send(data);
-      } else {
-        console.log('[WS] Server not open, readyState:', serverWs.readyState);
-      }
+
+      if (serverWs.readyState === WebSocket.OPEN) serverWs.send(data);
     });
-    
-    // Handle close events
-    serverWs.addEventListener('close', (event) => {
-      console.log('[WS] Client closed:', event.code, event.reason);
-      containerWs.close(event.code, event.reason);
+
+    // Handle close/error events
+    serverWs.addEventListener('close', (e) => {
+      console.log('[WS] Client closed:', e.code, e.reason);
+      containerWs.close(e.code, e.reason);
     });
-    
-    containerWs.addEventListener('close', (event) => {
-      console.log('[WS] Container closed:', event.code, event.reason);
-      // Transform the close reason (truncate to 123 bytes max for WebSocket spec)
-      let reason = transformErrorMessage(event.reason, url.host);
-      if (reason.length > 123) {
-        reason = reason.slice(0, 120) + '...';
-      }
-      console.log('[WS] Transformed close reason:', reason);
-      serverWs.close(event.code, reason);
+    containerWs.addEventListener('close', (e) => {
+      console.log('[WS] Container closed:', e.code, e.reason);
+      let reason = transformErrorMessage(e.reason, url.host);
+      if (reason.length > 123) reason = reason.slice(0, 120) + '...';
+      serverWs.close(e.code, reason);
     });
-    
-    // Handle errors
-    serverWs.addEventListener('error', (event) => {
-      console.error('[WS] Client error:', event);
-      containerWs.close(1011, 'Client error');
-    });
-    
-    containerWs.addEventListener('error', (event) => {
-      console.error('[WS] Container error:', event);
-      serverWs.close(1011, 'Container error');
-    });
-    
-    console.log('[WS] Returning intercepted WebSocket response');
-    return new Response(null, {
-      status: 101,
-      webSocket: clientWs,
-    });
+    serverWs.addEventListener('error', () => containerWs.close(1011, 'Client error'));
+    containerWs.addEventListener('error', () => serverWs.close(1011, 'Container error'));
+
+    return new Response(null, { status: 101, webSocket: clientWs });
   }
 
-  console.log('[HTTP] Proxying:', url.pathname + url.search);
-  const httpResponse = await sandbox.containerFetch(request, MOLTBOT_PORT);
+  // Proxy HTTP request with token injection
+  const httpUrl = new URL(request.url);
+  if (gatewayToken) httpUrl.searchParams.set('token', gatewayToken);
+  const proxiedRequest = new Request(httpUrl.toString(), request);
+  console.log('[HTTP] Proxying:', url.pathname);
+  const httpResponse = await sandbox.containerFetch(proxiedRequest, MOLTBOT_PORT);
   console.log('[HTTP] Response status:', httpResponse.status);
   
   // Add debug header to verify worker handled the request

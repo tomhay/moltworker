@@ -14,14 +14,13 @@ export async function findExistingMoltbotProcess(sandbox: Sandbox): Promise<Proc
   try {
     const processes = await sandbox.listProcesses();
     for (const proc of processes) {
-      // Only match the gateway process, not CLI commands like "clawdbot devices list"
-      // Note: CLI is still named "clawdbot" until upstream renames it
-      const isGatewayProcess = 
+      // Only match the gateway process, not CLI commands like "openclaw devices list"
+      const isGatewayProcess =
         proc.command.includes('start-moltbot.sh') ||
-        proc.command.includes('clawdbot gateway');
-      const isCliCommand = 
-        proc.command.includes('clawdbot devices') ||
-        proc.command.includes('clawdbot --version');
+        proc.command.includes('openclaw gateway');
+      const isCliCommand =
+        proc.command.includes('openclaw devices') ||
+        proc.command.includes('openclaw --version');
       
       if (isGatewayProcess && !isCliCommand) {
         if (proc.status === 'starting' || proc.status === 'running') {
@@ -63,8 +62,32 @@ export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): P
     try {
       console.log('Waiting for Moltbot gateway on port', MOLTBOT_PORT, 'timeout:', STARTUP_TIMEOUT_MS);
       await existingProcess.waitForPort(MOLTBOT_PORT, { mode: 'tcp', timeout: STARTUP_TIMEOUT_MS });
-      console.log('Moltbot gateway is reachable');
-      return existingProcess;
+      console.log('Moltbot gateway port is open, verifying connectivity via sandbox network...');
+
+      // waitForPort TCP check can succeed on loopback, but containerFetch/wsConnect
+      // connect via 10.0.0.1 (the container's LAN interface). If the gateway is bound
+      // to loopback only, the port check passes but actual connections fail.
+      // The sandbox returns 500 "not listening on 10.0.0.1" when unreachable.
+      try {
+        const healthReq = new Request(`http://localhost:${MOLTBOT_PORT}/`);
+        const healthResp = await sandbox.containerFetch(healthReq, MOLTBOT_PORT);
+        console.log('Gateway containerFetch status:', healthResp.status);
+        if (healthResp.status === 500) {
+          const body = await healthResp.text().catch(() => '');
+          console.log('Gateway returned 500, body:', body.slice(0, 200));
+          throw new Error('Gateway unreachable via sandbox network (500)');
+        }
+        console.log('Gateway connectivity verified');
+        return existingProcess;
+      } catch (fetchErr) {
+        console.log('Gateway port open but unreachable via sandbox network (likely bound to loopback). Killing...');
+        try {
+          await existingProcess.kill();
+        } catch (killError) {
+          console.log('Failed to kill loopback-bound process:', killError);
+        }
+        // Fall through to start a new gateway
+      }
     } catch (e) {
       // Timeout waiting for port - process is likely dead or stuck, kill and restart
       console.log('Existing process not reachable after full timeout, killing and restarting...');
@@ -78,6 +101,22 @@ export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): P
 
   // Start a new Moltbot gateway
   console.log('Starting new Moltbot gateway...');
+
+  // Kill any stale gateway processes from previous deploys
+  // (they may have been started with different bind modes or token configs)
+  try {
+    const allProcs = await sandbox.listProcesses();
+    for (const proc of allProcs) {
+      if ((proc.command.includes('start-moltbot.sh') || proc.command.includes('openclaw gateway')) &&
+          (proc.status === 'running' || proc.status === 'starting')) {
+        console.log('[Gateway] Killing stale process:', proc.id, proc.command.slice(0, 60));
+        await proc.kill();
+      }
+    }
+  } catch (e) {
+    console.log('[Gateway] Stale process cleanup failed (non-fatal):', e);
+  }
+
   const envVars = buildEnvVars(env);
   const command = '/usr/local/bin/start-moltbot.sh';
 
@@ -117,8 +156,22 @@ export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): P
     }
   }
 
-  // Verify gateway is actually responding
-  console.log('[Gateway] Verifying gateway health...');
-  
+  // Verify gateway is actually reachable via the sandbox network (not just loopback)
+  console.log('[Gateway] Verifying gateway connectivity via sandbox network...');
+  try {
+    const healthReq = new Request(`http://localhost:${MOLTBOT_PORT}/`);
+    const healthResp = await sandbox.containerFetch(healthReq, MOLTBOT_PORT);
+    console.log('[Gateway] containerFetch status:', healthResp.status);
+    if (healthResp.status === 500) {
+      const body = await healthResp.text().catch(() => '');
+      console.error('[Gateway] New gateway returned 500:', body.slice(0, 200));
+      throw new Error('Gateway started but not reachable via sandbox network (500)');
+    }
+    console.log('[Gateway] Connectivity verified');
+  } catch (fetchErr) {
+    console.error('[Gateway] Gateway started but unreachable via sandbox network:', fetchErr);
+    throw new Error('Gateway started but not reachable via sandbox network (may be bound to loopback)');
+  }
+
   return process;
 }

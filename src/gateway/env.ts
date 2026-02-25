@@ -43,10 +43,13 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   } else if (env.ANTHROPIC_BASE_URL) {
     envVars.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL;
   }
-  // Map MOLTBOT_GATEWAY_TOKEN to CLAWDBOT_GATEWAY_TOKEN (container expects this name)
-  if (env.MOLTBOT_GATEWAY_TOKEN) envVars.CLAWDBOT_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
-  if (env.DEV_MODE) envVars.CLAWDBOT_DEV_MODE = env.DEV_MODE; // Pass DEV_MODE as CLAWDBOT_DEV_MODE to container
-  if (env.CLAWDBOT_BIND_MODE) envVars.CLAWDBOT_BIND_MODE = env.CLAWDBOT_BIND_MODE;
+  // Pass gateway token to the container for --bind lan auth.
+  // The Worker handles HMAC challenge-response for WebSocket and ?token= for HTTP.
+  if (env.MOLTBOT_GATEWAY_TOKEN) {
+    envVars.CLAWDBOT_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
+  }
+  envVars.CLAWDBOT_BIND_MODE = env.CLAWDBOT_BIND_MODE || 'lan';
+  if (env.DEV_MODE) envVars.CLAWDBOT_DEV_MODE = env.DEV_MODE;
   if (env.TELEGRAM_BOT_TOKEN) envVars.TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN;
   if (env.TELEGRAM_DM_POLICY) envVars.TELEGRAM_DM_POLICY = env.TELEGRAM_DM_POLICY;
   if (env.DISCORD_BOT_TOKEN) envVars.DISCORD_BOT_TOKEN = env.DISCORD_BOT_TOKEN;
@@ -55,6 +58,7 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   if (env.SLACK_APP_TOKEN) envVars.SLACK_APP_TOKEN = env.SLACK_APP_TOKEN;
   if (env.CDP_SECRET) envVars.CDP_SECRET = env.CDP_SECRET;
   if (env.WORKER_URL) envVars.WORKER_URL = env.WORKER_URL;
+  if (env.TOMBRAIN_API_URL) envVars.TOMBRAIN_API_URL = env.TOMBRAIN_API_URL;
 
   return envVars;
 }

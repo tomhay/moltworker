@@ -140,40 +140,60 @@
     
     async function checkStatus() {
       pollCount++;
-      
+      // Use diag mode every 5th poll to get process details
+      const useDiag = pollCount % 5 === 1;
+
       try {
-        const response = await fetch('/api/status');
+        const response = await fetch('/api/status' + (useDiag ? '?diag=true' : ''));
         const data = await response.json();
         consecutiveErrors = 0;
-        
+
         if (data.ok && data.status === 'running') {
           // Container is ready! Reload the page
           titleEl.innerHTML = '<span class="ready">Moltworker is ready!</span>';
           statusEl.textContent = 'Redirecting...';
           document.querySelector('.spinner').style.display = 'none';
-          
+
           // Small delay so user sees the "ready" message
           setTimeout(() => {
             window.location.reload();
           }, 500);
           return;
         }
-        
+
         // Update status message based on state
+        let statusText = '';
         if (data.status === 'not_running') {
-          statusEl.textContent = 'Container is starting up...';
+          statusText = 'Container is starting up...';
         } else if (data.status === 'not_responding') {
-          statusEl.textContent = 'Container started, waiting for gateway...';
+          statusText = 'Container started, waiting for gateway...';
         } else {
-          statusEl.textContent = 'Checking status... (poll #' + pollCount + ')';
+          statusText = 'Checking status...';
         }
-        
+
+        // Show process details if available
+        if (data.processes && data.processes.length > 0) {
+          const procInfo = data.processes.map(p => p.command.slice(0, 60) + ' [' + p.status + ']').join(', ');
+          statusText += ' | Processes: ' + procInfo;
+        } else if (data.processes) {
+          statusText += ' | No processes found';
+        }
+
+        statusText += ' (poll #' + pollCount + ')';
+        statusEl.textContent = statusText;
+
+        // Show stderr if available (diagnostic mode)
+        if (data.stderr) {
+          errorEl.textContent = 'Process stderr: ' + data.stderr.slice(0, 500);
+          errorEl.style.display = 'block';
+        }
+
         // Continue polling
         setTimeout(checkStatus, 2000);
-        
+
       } catch (err) {
         consecutiveErrors++;
-        
+
         if (consecutiveErrors >= maxConsecutiveErrors) {
           errorEl.textContent = 'Unable to reach server. Please refresh the page.';
           errorEl.style.display = 'block';

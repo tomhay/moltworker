@@ -1,24 +1,24 @@
 #!/bin/bash
-# Startup script for Moltbot in Cloudflare Sandbox
+# Startup script for Moltbot (OpenClaw) in Cloudflare Sandbox
+# Version: 2026-02-25 (openclaw package upgrade)
 # This script:
 # 1. Restores config from R2 backup if available
-# 2. Configures moltbot from environment variables
+# 2. Configures OpenClaw from environment variables
 # 3. Starts a background sync to backup config to R2
 # 4. Starts the gateway
 
 set -e
 
-# Check if clawdbot gateway is already running - bail early if so
-# Note: CLI is still named "clawdbot" until upstream renames it
-if pgrep -f "clawdbot gateway" > /dev/null 2>&1; then
-    echo "Moltbot gateway is already running, exiting."
+# Check if openclaw gateway is already running - bail early if so
+if pgrep -f "openclaw gateway" > /dev/null 2>&1; then
+    echo "OpenClaw gateway is already running, exiting."
     exit 0
 fi
 
-# Paths (clawdbot paths are used internally - upstream hasn't renamed yet)
-CONFIG_DIR="/root/.clawdbot"
-CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
-TEMPLATE_DIR="/root/.clawdbot-templates"
+# Paths
+CONFIG_DIR="/root/.openclaw"
+CONFIG_FILE="$CONFIG_DIR/openclaw.json"
+TEMPLATE_DIR="/root/.openclaw-templates"
 TEMPLATE_FILE="$TEMPLATE_DIR/moltbot.json.template"
 BACKUP_DIR="/data/moltbot"
 
@@ -31,38 +31,38 @@ mkdir -p "$CONFIG_DIR"
 # ============================================================
 # RESTORE FROM R2 BACKUP
 # ============================================================
-# Check if R2 backup exists by looking for clawdbot.json
+# Check if R2 backup exists (supports both new openclaw/ and legacy clawdbot/ paths)
 # The BACKUP_DIR may exist but be empty if R2 was just mounted
-# Note: backup structure is $BACKUP_DIR/clawdbot/ and $BACKUP_DIR/skills/
+# Note: backup structure is $BACKUP_DIR/openclaw/ (or legacy $BACKUP_DIR/clawdbot/) and $BACKUP_DIR/skills/
 
 # Helper function to check if R2 backup is newer than local
 should_restore_from_r2() {
     local R2_SYNC_FILE="$BACKUP_DIR/.last-sync"
     local LOCAL_SYNC_FILE="$CONFIG_DIR/.last-sync"
-    
+
     # If no R2 sync timestamp, don't restore
     if [ ! -f "$R2_SYNC_FILE" ]; then
         echo "No R2 sync timestamp found, skipping restore"
         return 1
     fi
-    
+
     # If no local sync timestamp, restore from R2
     if [ ! -f "$LOCAL_SYNC_FILE" ]; then
         echo "No local sync timestamp, will restore from R2"
         return 0
     fi
-    
+
     # Compare timestamps
     R2_TIME=$(cat "$R2_SYNC_FILE" 2>/dev/null)
     LOCAL_TIME=$(cat "$LOCAL_SYNC_FILE" 2>/dev/null)
-    
+
     echo "R2 last sync: $R2_TIME"
     echo "Local last sync: $LOCAL_TIME"
-    
+
     # Convert to epoch seconds for comparison
     R2_EPOCH=$(date -d "$R2_TIME" +%s 2>/dev/null || echo "0")
     LOCAL_EPOCH=$(date -d "$LOCAL_TIME" +%s 2>/dev/null || echo "0")
-    
+
     if [ "$R2_EPOCH" -gt "$LOCAL_EPOCH" ]; then
         echo "R2 backup is newer, will restore"
         return 0
@@ -72,21 +72,38 @@ should_restore_from_r2() {
     fi
 }
 
-if [ -f "$BACKUP_DIR/clawdbot/clawdbot.json" ]; then
+if [ -f "$BACKUP_DIR/openclaw/openclaw.json" ]; then
     if should_restore_from_r2; then
-        echo "Restoring from R2 backup at $BACKUP_DIR/clawdbot..."
-        cp -a "$BACKUP_DIR/clawdbot/." "$CONFIG_DIR/"
-        # Copy the sync timestamp to local so we know what version we have
+        echo "Restoring from R2 backup at $BACKUP_DIR/openclaw..."
+        cp -a "$BACKUP_DIR/openclaw/." "$CONFIG_DIR/"
         cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
         echo "Restored config from R2 backup"
     fi
-elif [ -f "$BACKUP_DIR/clawdbot.json" ]; then
-    # Legacy backup format (flat structure)
+elif [ -f "$BACKUP_DIR/clawdbot/clawdbot.json" ]; then
+    # Legacy backup format (clawdbot directory structure)
     if should_restore_from_r2; then
-        echo "Restoring from legacy R2 backup at $BACKUP_DIR..."
+        echo "Restoring from legacy R2 backup at $BACKUP_DIR/clawdbot..."
+        cp -a "$BACKUP_DIR/clawdbot/." "$CONFIG_DIR/"
+        cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
+        # Rename legacy config file to new name
+        if [ -f "$CONFIG_DIR/clawdbot.json" ] && [ ! -f "$CONFIG_FILE" ]; then
+            mv "$CONFIG_DIR/clawdbot.json" "$CONFIG_FILE"
+            echo "Migrated clawdbot.json -> openclaw.json"
+        fi
+        echo "Restored config from legacy R2 backup"
+    fi
+elif [ -f "$BACKUP_DIR/clawdbot.json" ]; then
+    # Very old legacy backup format (flat structure)
+    if should_restore_from_r2; then
+        echo "Restoring from flat legacy R2 backup at $BACKUP_DIR..."
         cp -a "$BACKUP_DIR/." "$CONFIG_DIR/"
         cp -f "$BACKUP_DIR/.last-sync" "$CONFIG_DIR/.last-sync" 2>/dev/null || true
-        echo "Restored config from legacy R2 backup"
+        # Rename legacy config file to new name
+        if [ -f "$CONFIG_DIR/clawdbot.json" ] && [ ! -f "$CONFIG_FILE" ]; then
+            mv "$CONFIG_DIR/clawdbot.json" "$CONFIG_FILE"
+            echo "Migrated clawdbot.json -> openclaw.json"
+        fi
+        echo "Restored config from flat legacy R2 backup"
     fi
 elif [ -d "$BACKUP_DIR" ]; then
     echo "R2 mounted at $BACKUP_DIR but no backup data found yet"
@@ -136,7 +153,7 @@ fi
 node << EOFNODE
 const fs = require('fs');
 
-const configPath = '/root/.clawdbot/clawdbot.json';
+const configPath = '/root/.openclaw/openclaw.json';
 console.log('Updating config at:', configPath);
 let config = {};
 
@@ -168,27 +185,37 @@ if (config.models?.providers?.anthropic?.models) {
 // Gateway configuration
 config.gateway.port = 18789;
 config.gateway.mode = 'local';
-config.gateway.trustedProxies = ['10.1.0.0'];
+config.gateway.trustedProxies = ['10.0.0.0/8'];
 
-// Set gateway token if provided
+// Set or clear gateway token
 if (process.env.CLAWDBOT_GATEWAY_TOKEN) {
     config.gateway.auth = config.gateway.auth || {};
     config.gateway.auth.token = process.env.CLAWDBOT_GATEWAY_TOKEN;
+} else {
+    // Remove persisted token so gateway starts in device pairing mode
+    if (config.gateway.auth) {
+        delete config.gateway.auth.token;
+        if (Object.keys(config.gateway.auth).length === 0) {
+            delete config.gateway.auth;
+        }
+    }
 }
 
-// Allow insecure auth for dev mode
-if (process.env.CLAWDBOT_DEV_MODE === 'true') {
-    config.gateway.controlUi = config.gateway.controlUi || {};
-    config.gateway.controlUi.allowInsecureAuth = true;
-}
+// Allow insecure auth — skip device pairing when device identity is omitted.
+// This is safe because Cloudflare Access provides authentication at the edge.
+config.gateway.controlUi = config.gateway.controlUi || {};
+config.gateway.controlUi.allowInsecureAuth = true;
+// Clean up any invalid keys from previous config versions
+delete config.gateway.controlUi.dangerouslyDisableDeviceAuth;
 
 // Telegram configuration
 if (process.env.TELEGRAM_BOT_TOKEN) {
     config.channels.telegram = config.channels.telegram || {};
     config.channels.telegram.botToken = process.env.TELEGRAM_BOT_TOKEN;
     config.channels.telegram.enabled = true;
-    config.channels.telegram.dm = config.channels.telegram.dm || {};
-    config.channels.telegram.dmPolicy = process.env.TELEGRAM_DM_POLICY || 'pairing';
+    // Clean up invalid keys from previous config versions
+    delete config.channels.telegram.dm;
+    delete config.channels.telegram.dmPolicy;
 }
 
 // Discord configuration
@@ -217,7 +244,6 @@ const isOpenAI = baseUrl.endsWith('/openai');
 
 if (isOpenAI) {
     // Create custom openai provider config with baseUrl override
-    // Omit apiKey so moltbot falls back to OPENAI_API_KEY env var
     console.log('Configuring OpenAI provider with base URL:', baseUrl);
     config.models = config.models || {};
     config.models.providers = config.models.providers || {};
@@ -244,8 +270,8 @@ if (isOpenAI) {
         baseUrl: baseUrl,
         api: 'anthropic-messages',
         models: [
-            { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', contextWindow: 200000 },
-            { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 200000 },
+            { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 200000 },
+            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 200000 },
             { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', contextWindow: 200000 },
         ]
     };
@@ -256,13 +282,13 @@ if (isOpenAI) {
     config.models.providers.anthropic = providerConfig;
     // Add models to the allowlist so they appear in /models
     config.agents.defaults.models = config.agents.defaults.models || {};
-    config.agents.defaults.models['anthropic/claude-opus-4-5-20251101'] = { alias: 'Opus 4.5' };
-    config.agents.defaults.models['anthropic/claude-sonnet-4-5-20250929'] = { alias: 'Sonnet 4.5' };
+    config.agents.defaults.models['anthropic/claude-opus-4-6'] = { alias: 'Opus 4.6' };
+    config.agents.defaults.models['anthropic/claude-sonnet-4-6'] = { alias: 'Sonnet 4.6' };
     config.agents.defaults.models['anthropic/claude-haiku-4-5-20251001'] = { alias: 'Haiku 4.5' };
-    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5-20251101';
+    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-6';
 } else {
-    // Default to Anthropic without custom base URL (uses built-in pi-ai catalog)
-    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-5';
+    // Default to Anthropic without custom base URL (uses built-in catalog)
+    config.agents.defaults.model.primary = 'anthropic/claude-opus-4-6';
 }
 
 // Write updated config
@@ -275,20 +301,21 @@ EOFNODE
 # START GATEWAY
 # ============================================================
 # Note: R2 backup sync is handled by the Worker's cron trigger
-echo "Starting Moltbot Gateway..."
+echo "Starting OpenClaw Gateway..."
 echo "Gateway will be available on port 18789"
 
 # Clean up stale lock files
+rm -f /tmp/openclaw-gateway.lock 2>/dev/null || true
 rm -f /tmp/clawdbot-gateway.lock 2>/dev/null || true
 rm -f "$CONFIG_DIR/gateway.lock" 2>/dev/null || true
 
-BIND_MODE="lan"
+BIND_MODE="${CLAWDBOT_BIND_MODE:-lan}"
 echo "Dev mode: ${CLAWDBOT_DEV_MODE:-false}, Bind mode: $BIND_MODE"
 
 if [ -n "$CLAWDBOT_GATEWAY_TOKEN" ]; then
     echo "Starting gateway with token auth..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$CLAWDBOT_GATEWAY_TOKEN"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE" --token "$CLAWDBOT_GATEWAY_TOKEN"
 else
     echo "Starting gateway with device pairing (no token)..."
-    exec clawdbot gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
+    exec openclaw gateway --port 18789 --verbose --allow-unconfigured --bind "$BIND_MODE"
 fi

@@ -13,8 +13,8 @@ const debug = new Hono<AppEnv>();
 debug.get('/version', async (c) => {
   const sandbox = c.get('sandbox');
   try {
-    // Get moltbot version (CLI is still named clawdbot until upstream renames)
-    const versionProcess = await sandbox.startProcess('clawdbot --version');
+    // Get OpenClaw version
+    const versionProcess = await sandbox.startProcess('openclaw --version');
     await new Promise(resolve => setTimeout(resolve, 500));
     const versionLogs = await versionProcess.getLogs();
     const moltbotVersion = (versionLogs.stdout || versionLogs.stderr || '').trim();
@@ -123,10 +123,10 @@ debug.get('/gateway-api', async (c) => {
   }
 });
 
-// GET /debug/cli - Test moltbot CLI commands (CLI is still named clawdbot)
+// GET /debug/cli - Test OpenClaw CLI commands
 debug.get('/cli', async (c) => {
   const sandbox = c.get('sandbox');
-  const cmd = c.req.query('cmd') || 'clawdbot --help';
+  const cmd = c.req.query('cmd') || 'openclaw --help';
   
   try {
     const proc = await sandbox.startProcess(cmd);
@@ -353,12 +353,12 @@ debug.get('/env', async (c) => {
   });
 });
 
-// GET /debug/container-config - Read the moltbot config from inside the container
+// GET /debug/container-config - Read the OpenClaw config from inside the container
 debug.get('/container-config', async (c) => {
   const sandbox = c.get('sandbox');
-  
+
   try {
-    const proc = await sandbox.startProcess('cat /root/.clawdbot/clawdbot.json');
+    const proc = await sandbox.startProcess('cat /root/.openclaw/openclaw.json');
     
     let attempts = 0;
     while (attempts < 10) {
