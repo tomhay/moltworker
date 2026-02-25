@@ -32,9 +32,9 @@ RUN mkdir -p /root/.openclaw \
     && mkdir -p /root/clawd/skills
 
 # Copy startup script (must have LF line endings, not CRLF)
-# Build cache bust: 2026-02-25b-fix-crlf
+# Build cache bust: 2026-02-25c-disable-device-auth
 COPY start-openclaw.sh /usr/local/bin/start-openclaw.sh
-RUN chmod +x /usr/local/bin/start-openclaw.sh && head -1 /usr/local/bin/start-openclaw.sh | cat -A
+RUN chmod +x /usr/local/bin/start-openclaw.sh && grep -c dangerouslyDisableDeviceAuth /usr/local/bin/start-openclaw.sh
 
 # Copy custom skills
 COPY skills/ /root/clawd/skills/
