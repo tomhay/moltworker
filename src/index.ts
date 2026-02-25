@@ -432,8 +432,18 @@ app.all('*', async (c) => {
     });
   }
 
+  // Inject gateway token into HTTP request if not already present.
+  // CF Access redirects strip query params, so authenticated users lose ?token=.
+  // Since the user already passed CF Access auth, we inject the token server-side.
+  let httpRequest = request;
+  if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token')) {
+    const tokenUrl = new URL(url.toString());
+    tokenUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
+    httpRequest = new Request(tokenUrl.toString(), request);
+  }
+
   console.log('[HTTP] Proxying:', url.pathname + url.search);
-  const httpResponse = await sandbox.containerFetch(request, MOLTBOT_PORT);
+  const httpResponse = await sandbox.containerFetch(httpRequest, MOLTBOT_PORT);
   console.log('[HTTP] Response status:', httpResponse.status);
 
   // Add debug header to verify worker handled the request
