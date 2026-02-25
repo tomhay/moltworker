@@ -96,7 +96,7 @@ export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): P
   // container image hasn't been updated yet.
   try {
     await sandbox.exec(
-      `node -e "const fs=require('fs'),p='/root/.openclaw/openclaw.json';try{const c=JSON.parse(fs.readFileSync(p,'utf8'));c.gateway=c.gateway||{};c.gateway.controlUi=c.gateway.controlUi||{};c.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true;fs.writeFileSync(p,JSON.stringify(c,null,2));console.log('Patched controlUi')}catch(e){console.log('No config to patch yet')}"`,
+      `node -e "const fs=require('fs'),p='/root/.openclaw/openclaw.json';try{const c=JSON.parse(fs.readFileSync(p,'utf8'));c.gateway=c.gateway||{};c.gateway.controlUi=c.gateway.controlUi||{};c.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true;c.gateway.controlUi.dangerouslyDisableDeviceAuth=true;fs.writeFileSync(p,JSON.stringify(c,null,2));console.log('Patched controlUi')}catch(e){console.log('No config to patch yet')}"`,
     );
   } catch (e) {
     console.log('Config pre-patch skipped:', e);

@@ -165,8 +165,10 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
 }
 
 // Control UI: must configure origins for non-loopback binding (openclaw >= 2026.2.23)
+// Device auth is disabled because the worker handles auth via Cloudflare Access.
 config.gateway.controlUi = config.gateway.controlUi || {};
 config.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback = true;
+config.gateway.controlUi.dangerouslyDisableDeviceAuth = true;
 if (process.env.OPENCLAW_DEV_MODE === 'true') {
     config.gateway.controlUi.allowInsecureAuth = true;
 }
