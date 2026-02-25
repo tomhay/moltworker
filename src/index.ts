@@ -331,7 +331,10 @@ app.all('*', async (c) => {
       console.log('[WS] serverWs.readyState:', serverWs.readyState);
     }
 
-    // Relay messages from client to container
+    // Relay messages from client to container, injecting gateway token into
+    // the OpenClaw "connect" handshake message. The Control UI doesn't know
+    // the token, but the user already passed CF Access auth, so we inject it.
+    const gatewayToken = c.env.MOLTBOT_GATEWAY_TOKEN;
     serverWs.addEventListener('message', (event) => {
       if (debugLogs) {
         console.log(
@@ -340,8 +343,25 @@ app.all('*', async (c) => {
           typeof event.data === 'string' ? event.data.slice(0, 200) : '(binary)',
         );
       }
+
+      let data = event.data;
+      if (gatewayToken && typeof data === 'string') {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.method === 'connect' && parsed.params) {
+            parsed.params.token = gatewayToken;
+            data = JSON.stringify(parsed);
+            if (debugLogs) {
+              console.log('[WS] Injected gateway token into connect message');
+            }
+          }
+        } catch {
+          // Not JSON, pass through
+        }
+      }
+
       if (containerWs.readyState === WebSocket.OPEN) {
-        containerWs.send(event.data);
+        containerWs.send(data);
       } else if (debugLogs) {
         console.log('[WS] Container not open, readyState:', containerWs.readyState);
       }
