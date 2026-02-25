@@ -90,6 +90,18 @@ export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): P
 
   // Start a new OpenClaw gateway
   console.log('Starting new OpenClaw gateway...');
+
+  // Patch OpenClaw config for non-loopback Control UI (required since openclaw >= 2026.2.23).
+  // This runs before the startup script so the config is correct even if the
+  // container image hasn't been updated yet.
+  try {
+    await sandbox.exec(
+      `node -e "const fs=require('fs'),p='/root/.openclaw/openclaw.json';try{const c=JSON.parse(fs.readFileSync(p,'utf8'));c.gateway=c.gateway||{};c.gateway.controlUi=c.gateway.controlUi||{};c.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true;fs.writeFileSync(p,JSON.stringify(c,null,2));console.log('Patched controlUi')}catch(e){console.log('No config to patch yet')}"`,
+    );
+  } catch (e) {
+    console.log('Config pre-patch skipped:', e);
+  }
+
   const envVars = buildEnvVars(env);
   const command = '/usr/local/bin/start-openclaw.sh';
 

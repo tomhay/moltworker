@@ -105,9 +105,13 @@ function validateRequiredEnv(env: MoltbotEnv): string[] {
 function buildSandboxOptions(env: MoltbotEnv): SandboxOptions {
   const sleepAfter = env.SANDBOX_SLEEP_AFTER?.toLowerCase() || 'never';
 
-  // 'never' means keep the container alive indefinitely
+  // 'never' means don't set any sleep/keepAlive options.
+  // The container stays alive as long as requests keep flowing.
+  // Note: keepAlive and sleepAfter both use DO alarms internally,
+  // which crash-loop after deploys ("Durable Object reset because
+  // its code was updated"). Omitting them avoids this issue.
   if (sleepAfter === 'never') {
-    return { keepAlive: true };
+    return {};
   }
 
   // Otherwise, use the specified duration
@@ -135,7 +139,7 @@ app.use('*', async (c, next) => {
 // Middleware: Initialize sandbox for all requests
 app.use('*', async (c, next) => {
   const options = buildSandboxOptions(c.env);
-  const sandbox = getSandbox(c.env.Sandbox, 'moltbot', options);
+  const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v2', options);
   c.set('sandbox', sandbox);
   await next();
 });
