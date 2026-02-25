@@ -349,7 +349,7 @@ app.all('*', async (c) => {
         try {
           const parsed = JSON.parse(data);
           if (parsed.method === 'connect' && parsed.params) {
-            parsed.params.token = gatewayToken;
+            parsed.params.auth = { ...parsed.params.auth, token: gatewayToken };
             data = JSON.stringify(parsed);
             if (debugLogs) {
               console.log('[WS] Injected gateway token into connect message');
